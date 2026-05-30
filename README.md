@@ -22,30 +22,35 @@ on_llm_request hook (本插件):
   contexts 末尾注入 → Jailbreak 系统消息 (ST 的 post-history 定位)
         ↓
 最终消息结构:
-  system: [Main - Write {char}'s next reply...]
-  system: [AstrBot 原生: persona.prompt + skills + MCP]
-  user: [begin_dialogs...]              ← AstrBot 注入
-  assistant: [begin_dialogs...]
-  user: [用户消息 1]
-  assistant: [AI 回复 1]
-  ...
+  system: [Main]
+  system: [Persona + Skills + MCP]      ← AstrBot 原生
+  system: [enhanceDefs]
+  user/assistant: [begin_dialogs]       ← AstrBot 注入 (few-shot)
+  user/assistant: [chat messages...]
+  system: [Reminder @ depth=6]          ← 插件深度注入
+  user/assistant: [more chat...]
+  system: [Reminder @ depth=3]          ← 插件深度注入
+  user/assistant: [more chat...]
   user: [最新消息]
-  system: [Jailbreak - 生成前最后锚定]   ← 插件注入
+  system: [Jailbreak @ depth=0]         ← 生成前最后锚定
 ```
 
-### 三层结构
+### 防 OOC 机制
 
-| 层 | 作用 | 内容来源 |
-|---|------|---------|
-| **Main** | 设定对话框架，防止 AI 退回"助手模式" | 硬编码 (ST 经典指令) |
-| **Persona** | 角色身份 + 技能 + 工具 | AstrBot 原生 `req.system_prompt` |
-| **Jailbreak** | 最后锚定，强化人设边界 | 硬编码 (ST 风格提醒) |
+| 层 | 位置 | 作用 |
+|---|------|------|
+| **Main** | system_prompt 最前 | 设定对话框架，防止 AI 退回助手模式 |
+| **Persona** | system_prompt 中 | AstrBot 原生人格 prompt + skills + MCP |
+| **enhanceDefs** | system_prompt 末 | AI 可用训练知识扩充角色，但以显式定义为准 |
+| **Depth Injection** | contexts 深度 6/3 | 长对话中周期性刷新角色认知 (ST Author's Note 移植) |
+| **Jailbreak** | contexts 末尾 | 生成前最后锚定，注意力权重最高 |
 
 ### 为什么有效
 
-1. **Main 在最前面** — 用 system role 明确"这是角色扮演"，防止 AI 默认助手行为
-2. **Jailbreak 在最末尾** — 长对话中前面的指令可能被稀释，末尾的提醒离生成点最近、权重最高
-3. **AstrBot 原生内容完整保留** — skills/MCP/tools 不会丢失
+1. **Main 在最前面** — system role 明确"这是角色扮演"
+2. **Jailbreak 在最末尾** — 离生成点最近，权重最高
+3. **Depth Injection** — 长对话中早期指令被稀释，中段提醒刷新人设
+4. **AstrBot 原生内容完整保留** — skills/MCP/tools 不受影响
 
 ## 安装
 
