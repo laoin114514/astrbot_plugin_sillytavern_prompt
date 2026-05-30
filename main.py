@@ -17,7 +17,7 @@ Version: 0.4.0
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger, AstrBotConfig
+from astrbot.api import logger
 from astrbot.api.provider import ProviderRequest
 
 
@@ -57,7 +57,7 @@ DEPTHS = [0, 3, 6]
 
 @register(PLUGIN_NAME, "laoin", "ST 防 OOC 包装器：多层深度注入 + 人格保护", "v0.4.0")
 class SillyTavernAntiOOC(Star):
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context, config=None):
         super().__init__(context)
         logger.info("[ST-AntiOOC] 已加载 (depth injection @ %s)", DEPTHS)
 
