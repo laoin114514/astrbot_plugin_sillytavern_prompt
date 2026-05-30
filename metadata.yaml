@@ -1,7 +1,7 @@
 name: sillytavern_prompt
-display_name: 提示词管理插件 (SillyTavern)
-short_desc: 移植 SillyTavern 的分层 Prompt 管理系统，支持角色卡导入、预设管理、人设保持
-version: v0.1.0
+display_name: ST 防 OOC 包装器
+short_desc: 读取 AstrBot 当前人格，用 SillyTavern 分层防 OOC 结构包装 system_prompt 防止人设崩坏
+version: v0.3.0
 author: laoin
 astrbot_version: ">=4.16,<5"
 support_platforms:
@@ -13,3 +13,4 @@ support_platforms:
   - lark
   - dingtalk
   - qq_official
+  - webchat
