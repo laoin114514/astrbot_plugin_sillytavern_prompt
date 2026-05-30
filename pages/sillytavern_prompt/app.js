@@ -1,5 +1,4 @@
 const bridge = window.AstrBotPluginPage;
-const PLUGIN = "sillytavern_prompt";
 
 // DOM
 const cardList = document.getElementById("card-list");
@@ -19,12 +18,12 @@ let availableTools = [];
 // ── API ───────────────────────────────────────────────
 
 async function apiGet(path) {
-  const res = await bridge.apiGet(`${PLUGIN}/${path}`);
+  const res = await bridge.apiGet(path);
   return res;
 }
 
 async function apiPost(path, data) {
-  const res = await bridge.apiPost(`${PLUGIN}/${path}`, data);
+  const res = await bridge.apiPost(path, data);
   return res;
 }
 
