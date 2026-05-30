@@ -48,8 +48,8 @@ class PromptAssembler:
 
     def build_system_prompt(
         self,
-        character: Optional[CharacterCard],
-        preset: PromptPreset,
+        character: Optional[CharacterCard] = None,
+        preset: object = None,
         user_name: str = "User",
         persona_description: str = "",
         wrap_labels: bool = True,
@@ -57,22 +57,16 @@ class PromptAssembler:
         enabled_sections: dict[str, bool] | None = None,
         world_info_before: str = "",
         world_info_after: str = "",
+        card_override_prompt: str = "",
     ) -> str:
         """组装完整的 system prompt。
 
         Args:
-            character: 当前活跃角色卡（可为 None）
-            preset: 当前系统提示词预设
-            user_name: 用户名，替换 {{user}}
-            persona_description: 用户人称描述，替换 {{persona}}
-            wrap_labels: 是否为每个 section 添加标签
-            include_examples: 是否包含对话示例
-            enabled_sections: section 启用状态，key 为 section 标识符
-            world_info_before: 世界书内容（角色前）
-            world_info_after: 世界书内容（角色后）
-
-        Returns:
-            组装好的完整 system_prompt 字符串
+            character: 导入的 ST 角色卡（可为 None）
+            preset: 预设对象（已废弃，保留兼容）
+            user_name: 用户名
+            persona_description: 用户人设
+            card_override_prompt: 角色卡的 prompt 文本，用于 main section
         """
         if enabled_sections is None:
             enabled_sections = {s[0]: True for s in SECTION_ORDER}
@@ -110,6 +104,7 @@ class PromptAssembler:
                 include_examples,
                 world_info_before,
                 world_info_after,
+                card_override_prompt,
             )
 
             if not content or not content.strip():
@@ -126,11 +121,16 @@ class PromptAssembler:
             parts.append(content)
 
         # 对 system 和 jailbreak 的额外替换
-        macro_kwargs["system_content"] = preset.content if preset else ""
+        macro_kwargs["system_content"] = (
+            card_override_prompt or
+            (preset.content if preset and hasattr(preset, "content") else "")
+        )
         macro_kwargs["jailbreak_content"] = (
-            character.get_effective_post_history(preset.post_history)
+            character.get_effective_post_history(
+                preset.post_history if preset and hasattr(preset, "post_history") else ""
+            )
             if character
-            else (preset.post_history if preset else "")
+            else (preset.post_history if preset and hasattr(preset, "post_history") else "")
         )
 
         assembled = "\n\n".join(parts)
@@ -142,55 +142,49 @@ class PromptAssembler:
         self,
         section_id: str,
         character: Optional[CharacterCard],
-        preset: PromptPreset,
+        preset: object,
         user_name: str,
         char_name: str,
         persona_description: str,
         include_examples: bool,
         world_info_before: str,
         world_info_after: str,
+        card_override_prompt: str = "",
     ) -> str:
         """获取每个 section 的实际内容。
 
-        关键覆盖规则（移植自 ST）:
-        - main: 角色卡 system_prompt > 预设 content
+        关键覆盖规则:
+        - main: 角色卡 system_prompt > card_override_prompt > 预设 content
         - jailbreak: 角色卡 post_history_instructions > 预设 post_history
-        - charDescription/charPersonality/scenario: 来自角色卡
-        - dialogueExamples: 来自角色卡 mes_example
         """
         if section_id == "worldInfoBefore":
             return world_info_before
-
         if section_id == "worldInfoAfter":
             return world_info_after
 
         if section_id == "main":
-            # 角色卡 system_prompt 覆盖预设 content
             if character and character.system_prompt:
                 return character.system_prompt
-            return preset.content if preset else ""
+            if card_override_prompt:
+                return card_override_prompt
+            preset_content = preset.content if preset and hasattr(preset, "content") else ""
+            return preset_content
 
         if section_id == "charDescription":
             return character.description if character else ""
-
         if section_id == "charPersonality":
             return character.personality if character else ""
-
         if section_id == "scenario":
             return character.scenario if character else ""
-
         if section_id == "personaDescription":
             return persona_description
-
         if section_id == "nsfw":
-            # ST 中 nsfw 是一个辅助提示词，通常为空
             return ""
 
         if section_id == "jailbreak":
-            # 角色卡 post_history_instructions 覆盖预设 post_history
             if character and character.post_history_instructions:
                 return character.post_history_instructions
-            return preset.post_history if preset else ""
+            return preset.post_history if preset and hasattr(preset, "post_history") else ""
 
         if section_id == "enhanceDefinitions":
             return (
