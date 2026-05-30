@@ -218,15 +218,19 @@ class SillyTavernAntiOOC(Star):
         max_msg = int(self.config.get("max_messages", 3))
         max_chars = int(self.config.get("max_chars_per_message", 200))
 
-        # 渐进式格式强化
-        fail_count = self._failures.get(sid, 0)
-        if fail_count == 0:
-            fmt = JSON_FORMAT_INSTRUCTION.format(max_messages=max_msg, max_chars=max_chars)
-        elif fail_count == 1:
-            fmt = JSON_FORMAT_CRITICAL.format(max_messages=max_msg, max_chars=max_chars)
+        # JSON 格式指令 (仅在启用时注入)
+        use_json = bool(self.config.get("enable_json_format", False))
+        if use_json:
+            fail_count = self._failures.get(sid, 0)
+            if fail_count == 0:
+                fmt = JSON_FORMAT_INSTRUCTION.format(max_messages=max_msg, max_chars=max_chars)
+            elif fail_count == 1:
+                fmt = JSON_FORMAT_CRITICAL.format(max_messages=max_msg, max_chars=max_chars)
+            else:
+                snippet = self._last_bad.get(sid, "")[:300]
+                fmt = JSON_FORMAT_FINAL.format(max_messages=max_msg, max_chars=max_chars, snippet=snippet)
         else:
-            snippet = self._last_bad.get(sid, "")[:300]
-            fmt = JSON_FORMAT_FINAL.format(max_messages=max_msg, max_chars=max_chars, snippet=snippet)
+            fmt = ""
 
         main = ST_MAIN.format(char=char_name, user=user_name)
         enhance = ST_ENHANCE.format(char=char_name, user=user_name)
@@ -241,12 +245,13 @@ class SillyTavernAntiOOC(Star):
             f"{fmt}"
         )
 
-        # user 级别格式提醒 (LLM 对用户消息遵循度更高)
-        if req.extra_user_content_parts is None:
-            req.extra_user_content_parts = []
-        req.extra_user_content_parts.append(
-            TextPart(text=f"[Remember: respond with ONLY the JSON object. No markdown, no other text.]")
-        )
+        # user 级别格式提醒 (仅在启用时注入)
+        if use_json:
+            if req.extra_user_content_parts is None:
+                req.extra_user_content_parts = []
+            req.extra_user_content_parts.append(
+                TextPart(text="[Remember: respond with ONLY the JSON object. No markdown, no other text.]")
+            )
 
         # 深度注入
         if req.contexts is None:
@@ -260,12 +265,14 @@ class SillyTavernAntiOOC(Star):
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
-        """解析 LLM 响应中的 JSON，提取 messages 数组。"""
+        """解析 LLM 响应中的 JSON，提取 messages 数组（仅在 enable_json_format 时生效）。"""
+        if not self.config.get("enable_json_format", False):
+            return
+
         result = event.get_result()
         if not result:
             return
 
-        # 从 result.chain 中提取纯文本
         text = ""
         try:
             for comp in result.chain:

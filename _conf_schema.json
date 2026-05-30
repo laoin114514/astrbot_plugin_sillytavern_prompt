@@ -1,4 +1,10 @@
 {
+    "enable_json_format": {
+        "description": "启用 JSON 响应格式控制",
+        "type": "bool",
+        "hint": "开启后 AI 强制返回 JSON 格式。社交媒体场景使用，普通聊天建议关闭",
+        "default": false
+    },
     "max_messages": {
         "description": "AI 最多返回消息条数",
         "type": "int",
