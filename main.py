@@ -49,12 +49,12 @@ DEPTHS = [0, 3, 6]
 # ── JSON 格式指令 ────────────────────────────────────
 
 JSON_FMT = (
-    "\n\n[Response Format]\n"
-    "Reply in JSON: {{\"messages\":[{{\"content\":\"your reply\"}}]}}\n"
-    "- Multiple messages: {{\"messages\":[{{\"content\":\"first\"}},{{\"content\":\"second\"}}]}}\n"
-    "- Max {max_messages} messages, each ≤{max_chars} characters\n"
-    "- content must be plain text, no markdown formatting\n"
-    "- Just output the JSON object directly, no ``` fences"
+    "\n\n[OUTPUT FORMAT - MUST FOLLOW]\n"
+    "Your entire response must be a single JSON object and nothing else.\n"
+    'Format: {{"messages":[{{"content":"your reply text here"}}]}}\n'
+    'Example response: {{"messages":[{{"content":"Hey! What\'s up?"}}]}}\n'
+    "- messages: 1-{max_messages} items, each content ≤{max_chars} chars\n"
+    "- plain text only inside content, no markdown"
 )
 
 MD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__|`(.+?)`|~~(.+?)~~|\*(.+?)\*|_(.+?)_")
@@ -243,11 +243,14 @@ class SillyTavernAntiOOC(Star):
     async def on_llm_response(self, event: AstrMessageEvent, resp):
         """捕获 LLM 原始响应用于调试。"""
         if self._debug and resp:
-            content = getattr(resp, "content", "") or ""
+            # LLMResponse 的文本在 _completion_text，不是 .content
+            text = getattr(resp, "_completion_text", "") or ""
+            text = str(text) if text else ""
             role = getattr(resp, "role", "") or ""
+            tool_calls = getattr(resp, "tools_call_name", []) or []
             logger.warning(
-                "[ST-AntiOOC] LLM响应#%d role=%s content(%d): %s",
-                self._response_count, role, len(content), str(content)[:500],
+                "[ST-AntiOOC] LLM响应#%d role=%s text(%d): %s tools=%s",
+                self._response_count, role, len(text), text[:500], tool_calls,
             )
             self._response_count += 1
 
@@ -288,14 +291,18 @@ class SillyTavernAntiOOC(Star):
 
         if messages:
             self._failures[sid] = 0
-            # 多条消息用空行分隔
             event.set_result("\n\n".join(messages))
             logger.info("[ST-AntiOOC] JSON 解析成功: %d 条消息", len(messages))
         else:
             self._failures[sid] = self._failures.get(sid, 0) + 1
             self._last_bad[sid] = text.strip()[:500]
-            # 失败时不修改 result，保持 AI 原始输出
+            # 清理 JSON 残骸，防止 {"messages":} 进入对话历史造成死循环
+            cleaned = re.sub(r'[{}"]', '', text.strip())
+            cleaned = re.sub(r'\bmessages\b', '', cleaned, flags=re.IGNORECASE)
+            cleaned = cleaned.strip().strip(':').strip()
+            if cleaned:
+                event.set_result(cleaned)
             logger.warning(
-                "[ST-AntiOOC] JSON 解析失败#%d: %s",
-                self._failures[sid], text.strip()[:200],
+                "[ST-AntiOOC] JSON 解析失败#%d, 原始=%s, 清理后=%s",
+                self._failures[sid], text.strip()[:100], cleaned[:100],
             )
