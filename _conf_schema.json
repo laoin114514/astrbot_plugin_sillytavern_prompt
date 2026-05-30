@@ -1,4 +1,10 @@
 {
+    "debug": {
+        "description": "调试模式 (输出 AI 原始响应等调试信息到日志)",
+        "type": "bool",
+        "hint": "排查问题时开启，正常使用请关闭",
+        "default": false
+    },
     "enable_json_format": {
         "description": "启用 JSON 响应格式控制",
         "type": "bool",

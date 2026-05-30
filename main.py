@@ -91,11 +91,23 @@ class SillyTavernAntiOOC(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
         self.config = config or {}
-        # 格式失败计数器: session_id → 连续失败次数
         self._failures: dict[str, int] = {}
-        # 上次原始响应: session_id → 上次失败的响应摘要
         self._last_bad: dict[str, str] = {}
-        logger.info("[ST-AntiOOC] v0.5.0 loaded (depth injection @ %s, JSON format enforcement)", DEPTHS)
+        dbg = "ON" if self._debug else "OFF"
+        jfmt = "ON" if self._json_enabled else "OFF"
+        logger.info("[ST-AntiOOC] v0.5.1 loaded (depth=%s debug=%s json=%s)", DEPTHS, dbg, jfmt)
+
+    # ── 配置助手 ────────────────────────────────────────
+
+    @property
+    def _debug(self) -> bool:
+        """调试模式 (是 Python True，不是字符串 'true')。"""
+        return self.config.get("debug") is True
+
+    @property
+    def _json_enabled(self) -> bool:
+        """JSON 格式控制是否启用。"""
+        return self.config.get("enable_json_format") is True
 
     # ── 人格解析 ────────────────────────────────────────
 
@@ -219,8 +231,7 @@ class SillyTavernAntiOOC(Star):
         max_chars = int(self.config.get("max_chars_per_message", 200))
 
         # JSON 格式指令 (仅在启用时注入)
-        use_json = bool(self.config.get("enable_json_format", False))
-        if use_json:
+        if self._json_enabled:
             fail_count = self._failures.get(sid, 0)
             if fail_count == 0:
                 fmt = JSON_FORMAT_INSTRUCTION.format(max_messages=max_msg, max_chars=max_chars)
@@ -244,9 +255,15 @@ class SillyTavernAntiOOC(Star):
             f"{enhance}"
             f"{fmt}"
         )
+        if self._debug:
+            logger.info(
+                "[ST-AntiOOC] on_llm_request char=%s user=%s json=%s contexts=%d prompt_len=%d",
+                char_name, user_name, self._json_enabled,
+                len(req.contexts or []), len(req.system_prompt),
+            )
 
         # user 级别格式提醒 (仅在启用时注入)
-        if use_json:
+        if self._json_enabled:
             if req.extra_user_content_parts is None:
                 req.extra_user_content_parts = []
             req.extra_user_content_parts.append(
@@ -266,9 +283,6 @@ class SillyTavernAntiOOC(Star):
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """解析 LLM 响应中的 JSON，提取 messages 数组（仅在 enable_json_format 时生效）。"""
-        if not self.config.get("enable_json_format", False):
-            return
-
         result = event.get_result()
         if not result:
             return
@@ -280,6 +294,13 @@ class SillyTavernAntiOOC(Star):
                     text += comp.text
         except Exception:
             pass
+
+        # 调试模式：始终输出 AI 原始响应
+        if self._debug and text.strip():
+            logger.info("[ST-AntiOOC] AI返回(%d chars): %s", len(text), text[:800])
+
+        if not self._json_enabled:
+            return
         if not text.strip():
             return
 
