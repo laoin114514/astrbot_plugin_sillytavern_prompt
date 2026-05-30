@@ -67,6 +67,8 @@ class SillyTavernAntiOOC(Star):
         self.config = config or {}
         self._failures: dict[str, int] = {}
         self._last_bad: dict[str, str] = {}
+        self._request_count = 0
+        self._response_count = 0
         logger.warning(
             "[ST-AntiOOC] v0.5.2 loaded debug=%s json=%s depths=%s config_keys=%s",
             self._debug, self._json_enabled, DEPTHS,

@@ -1,7 +1,8 @@
 name: sillytavern_prompt
 display_name: ST 防 OOC 包装器
-short_desc: 读取 AstrBot 当前人格，用 SillyTavern 分层防 OOC 结构包装 system_prompt 防止人设崩坏
-version: v0.3.0
+desc: 读取 AstrBot 当前人格，用 SillyTavern 分层防 OOC 结构包装 system_prompt 防止人设崩坏
+short_desc: ST 防 OOC + JSON 结构化输出
+version: v0.5.2
 author: laoin
 astrbot_version: ">=4.16,<5"
 support_platforms:
