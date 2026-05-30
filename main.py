@@ -7,7 +7,9 @@ ST 分层人设通过 on_llm_request hook 追加到 system_prompt 前面。
 import json
 import os
 from typing import Optional
+from urllib.parse import unquote
 
+from quart import jsonify, request
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
@@ -48,9 +50,58 @@ class SillyTavernPromptPlugin(Star):
         # 运行时: 已导入的 ST PNG 角色卡 (按会话)
         self._imported_st_cards: dict[str, STCharCard] = {}
 
+        # 注册 Web API 路由供前端页面调用
+        ctx = context
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards", self._api_list_cards, ["GET"], "列出所有角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/<name>", self._api_get_card, ["GET"], "获取单张角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/save", self._api_save_card, ["POST"], "保存角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/delete", self._api_delete_card, ["POST"], "删除角色卡")
+
         logger.info(
             f"[ST-Prompt] 角色卡系统已加载，{len(self.store.list_all())} 张角色卡可用"
         )
+
+    # ── Web API ─────────────────────────────────────────
+
+    async def _api_list_cards(self):
+        """GET /cards → [{name, skills, tools}, ...]"""
+        cards = self.store.list_all()
+        result = []
+        for c in cards:
+            result.append({
+                "name": c.name,
+                "skills": c.skills,
+                "tools": c.tools,
+            })
+        return jsonify(result)
+
+    async def _api_get_card(self, name: str):
+        """GET /cards/<name> → card object"""
+        name = unquote(name)
+        card = self.store.load(name)
+        if not card:
+            return jsonify({"error": "not found"}), 404
+        return jsonify(card.to_dict())
+
+    async def _api_save_card(self):
+        """POST /cards/save {name, prompt, skills, ...}"""
+        data = await request.get_json()
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "name is required"}), 400
+        card = CharacterCard.from_dict(data)
+        self.store.save(card)
+        return jsonify({"ok": True, "name": name})
+
+    async def _api_delete_card(self):
+        """POST /cards/delete {name}"""
+        data = await request.get_json()
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "name is required"}), 400
+        self.store.delete(name)
+        await self.store.delete_from_astrbot(name, self.context.persona_manager)
+        return jsonify({"ok": True})
 
     # ── 辅助 ────────────────────────────────────────────
 

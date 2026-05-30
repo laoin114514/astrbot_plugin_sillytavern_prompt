@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>角色卡管理</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- 左侧：角色卡列表 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>角色卡</h2>
+        <button id="btn-new-card" class="primary">+ 新建</button>
+      </div>
+      <ul id="card-list"></ul>
+    </aside>
+
+    <!-- 右侧：编辑区 -->
+    <main class="editor" id="editor">
+      <div class="empty-state">选择一张角色卡或新建一张</div>
+    </main>
+  </div>
+
+  <!-- 新建/编辑弹窗 -->
+  <dialog id="card-dialog">
+    <form method="dialog" id="card-form">
+      <h3 id="dialog-title">新建角色卡</h3>
+
+      <label>名称
+        <input name="name" placeholder="唯一标识，如 anya" required />
+      </label>
+
+      <label>System Prompt
+        <textarea name="prompt" rows="4" placeholder="AI 的核心指令..."></textarea>
+      </label>
+
+      <div class="row">
+        <label>Skills
+          <input name="skills" placeholder="null=全部, []=无, [&quot;memory&quot;]=指定" />
+        </label>
+        <label>Tools
+          <input name="tools" placeholder="null=全部, []=无, [&quot;web_search&quot;]=指定" />
+        </label>
+      </div>
+
+      <details>
+        <summary>分层人设（可选）</summary>
+        <label>角色描述 (description)
+          <textarea name="description" rows="2" placeholder="Anya has long black hair..."></textarea>
+        </label>
+        <label>性格 (personality)
+          <input name="personality" placeholder="Gentle, caring, shy..." />
+        </label>
+        <label>场景 (scenario)
+          <input name="scenario" placeholder="You meet in a coffee shop..." />
+        </label>
+        <label>开场白 (first_mes)
+          <input name="first_mes" placeholder="Hello, nice to meet you!" />
+        </label>
+        <label>对话示例 (mes_example)
+          <textarea name="mes_example" rows="3" placeholder="<START>&#10;{{char}}: Hello!&#10;{{user}}: Hi!"></textarea>
+        </label>
+        <label>用户名 (user_name)
+          <input name="user_name" value="User" />
+        </label>
+        <label>用户 Persona
+          <textarea name="persona_description" rows="2" placeholder="用户的身份设定..."></textarea>
+        </label>
+      </details>
+
+      <div class="dialog-actions">
+        <button type="button" id="btn-cancel" class="secondary">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
