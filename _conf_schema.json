@@ -1,0 +1,14 @@
+{
+    "max_messages": {
+        "description": "AI 最多返回消息条数",
+        "type": "int",
+        "hint": "超过此数量的消息会被截断，设为 1 则只返回一条",
+        "default": 3
+    },
+    "max_chars_per_message": {
+        "description": "每条消息最多字符数",
+        "type": "int",
+        "hint": "超过此长度的消息会被截断，适用于没有 Markdown 渲染的聊天平台",
+        "default": 200
+    }
+}
