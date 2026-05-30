@@ -15,15 +15,22 @@
 ```
 AstrBot 原生管线:
   persona.prompt + skills 文本 → req.system_prompt
+  begin_dialogs → req.contexts (前置)
         ↓
 on_llm_request hook (本插件):
-  ┌─────────────────────────────────────┐
-  │ [Main] 对话框架 + 防 OOC 基础指令    │ ← 硬编码 ST 风格
-  │ [Character Identity] AstrBot 原生    │ ← 人格 prompt + skills + MCP
-  │ [Jailbreak] 最终锚定提醒             │ ← 硬编码 ST 风格
-  └─────────────────────────────────────┘
+  system_prompt 重组 → Main 指令 + 原生内容
+  contexts 末尾注入 → Jailbreak 系统消息 (ST 的 post-history 定位)
         ↓
-  req.system_prompt = 组装后
+最终消息结构:
+  system: [Main - Write {char}'s next reply...]
+  system: [AstrBot 原生: persona.prompt + skills + MCP]
+  user: [begin_dialogs...]              ← AstrBot 注入
+  assistant: [begin_dialogs...]
+  user: [用户消息 1]
+  assistant: [AI 回复 1]
+  ...
+  user: [最新消息]
+  system: [Jailbreak - 生成前最后锚定]   ← 插件注入
 ```
 
 ### 三层结构

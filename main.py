@@ -5,10 +5,10 @@
 
 工作原理:
   1. AstrBot 原生管线已组装好 persona.prompt + skills + tools → req.system_prompt
-  2. on_llm_request hook 中将原生内容嵌入 ST 风格的三段式防 OOC 壳:
-     - Main: 对话框架 + 防 OOC 基础指令
-     - Persona: AstrBot 原生内容 (人格 + 技能 + MCP)
-     - Jailbreak: 最终锚定提醒
+     begin_dialogs → req.contexts (前面)
+  2. on_llm_request hook:
+     - system_prompt 重组: Main 指令 + AstrBot 原生内容
+     - contexts 末尾注入: Jailbreak 系统消息 (ST 中放在聊天历史后，离生成点最近)
 
 Author: laoin
 Version: 0.3.0
@@ -61,7 +61,13 @@ class SillyTavernAntiOOC(Star):
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
-        """用 ST 防 OOC 壳包装 AstrBot 原生 system_prompt。"""
+        """用 ST 防 OOC 壳包装 AstrBot 原生 system_prompt。
+
+        ST 的三段式防 OOC 结构:
+          1. Main 指令 → system_prompt 前面
+          2. Persona + Skills + Tools → system_prompt 中原生内容保留
+          3. Jailbreak → 注入到 contexts 末尾，作为生成前的最后锚定
+        """
         native = req.system_prompt or ""
         if not native.strip():
             return
@@ -72,11 +78,12 @@ class SillyTavernAntiOOC(Star):
         main = ST_MAIN_PROMPT.format(char=char_name, user=user_name)
         jailbreak = ST_JAILBREAK.format(char=char_name, user=user_name)
 
-        assembled = f"""{main}
+        # 1. 重组 system_prompt: Main 指令 + AstrBot 原生内容
+        req.system_prompt = f"{main}\n\n{native}"
 
-[Character Identity & Capabilities]
-{native}
-
-{jailbreak}"""
-
-        req.system_prompt = assembled
+        # 2. Jailbreak 注入到 contexts 末尾（ST 中 jailbreak 在聊天历史之后）
+        req.contexts.append({
+            "role": "system",
+            "content": jailbreak,
+            "_no_save": True,  # 不持久化到数据库，仅本次请求
+        })
