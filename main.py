@@ -87,6 +87,19 @@ class SillyTavernAntiOOC(Star):
 
     # ── 深度注入 ────────────────────────────────────────
 
+    @staticmethod
+    def _is_safe_position(contexts: list, pos: int) -> bool:
+        """检查在 pos 插入消息是否会打断 tool_calls 序列。
+
+        LLM API 要求 assistant(tool_calls) 后必须紧跟 tool 响应消息，
+        中间不能插入其他消息。
+        """
+        for i in range(max(0, pos - 1), min(len(contexts), pos + 2)):
+            msg = contexts[i]
+            if msg.get("role") == "tool" or msg.get("tool_calls"):
+                return False
+        return True
+
     def _inject_at_depths(self, contexts: list, content: str, depths: list[int]) -> None:
         """在对话历史的多个深度位置注入系统消息。
 
@@ -96,16 +109,23 @@ class SillyTavernAntiOOC(Star):
           3. 反转回原始顺序
 
         totalInserted 跟踪已插入数量，确保后续插入位置正确。
+        跳过会打断 tool_calls 序列的位置。
         """
         if not contexts:
             return
 
-        # ST 算法: 反转 → 按深度插入 → 反转回
         contexts.reverse()
         total_inserted = 0
+        skipped = 0
 
         for depth in sorted(depths):
             pos = depth + total_inserted
+            if pos >= len(contexts):
+                break
+            # 往后找一个安全位置
+            while pos < len(contexts) and not self._is_safe_position(contexts, pos):
+                pos += 1
+                skipped += 1
             if pos >= len(contexts):
                 break
             contexts.insert(pos, {
@@ -114,6 +134,9 @@ class SillyTavernAntiOOC(Star):
                 "_no_save": True,
             })
             total_inserted += 1
+
+        if skipped:
+            logger.debug("[ST-AntiOOC] 跳过 %d 个不安全位置 (tool_calls 序列)", skipped)
 
         contexts.reverse()
 
