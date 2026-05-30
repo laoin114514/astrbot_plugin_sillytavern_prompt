@@ -74,10 +74,10 @@ class SillyTavernPromptPlugin(Star):
         # 注册 Web API 路由供前端页面调用
         ctx = context
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards", self._api_list_cards, ["GET"], "列出角色卡")
-        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/<name>", self._api_get_card, ["GET"], "获取单张角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/active", self._api_select_card, ["GET", "POST"], "获取/设置当前角色卡")
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards/save", self._api_save_card, ["POST"], "保存角色卡")
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards/delete", self._api_delete_card, ["POST"], "删除角色卡")
-        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/select", self._api_select_card, ["GET", "POST"], "获取/设置当前角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/cards/<name>", self._api_get_card, ["GET"], "获取单张角色卡")
         ctx.register_web_api(f"/{PLUGIN_NAME}/available-skills", self._api_available_skills, ["GET"], "获取可用 skills")
         ctx.register_web_api(f"/{PLUGIN_NAME}/available-tools", self._api_available_tools, ["GET"], "获取可用 tools")
 

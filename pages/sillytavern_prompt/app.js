@@ -78,7 +78,7 @@ function setupModeRadios(prefix) {
 // ── 列表 ──────────────────────────────────────────────
 
 async function loadCards() {
-  const sel = await apiGet("cards/select");
+  const sel = await apiGet("cards/active");
   activeName = sel?.name || null;
   cards = await apiGet("cards") || [];
   renderList();
@@ -136,7 +136,7 @@ function renderDetail(card) {
   const btnSelect = document.getElementById("btn-select");
   if (btnSelect) {
     btnSelect.addEventListener("click", async () => {
-      await apiPost("cards/select", { name: card.name });
+      await apiPost("cards/active", { name: card.name });
       activeName = card.name;
       renderList();
       renderDetail(card);
