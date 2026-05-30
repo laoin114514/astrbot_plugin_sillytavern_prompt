@@ -17,18 +17,12 @@
         "hint": "插件启动时自动加载的预设名称，留空使用内置 default",
         "default": "default"
     },
-    "astrbot_persona_name": {
-        "description": "AI 人设来源 (从 AstrBot 人格列表选择)",
+    "astrbot_persona_for_tools": {
+        "description": "AstrBot 人格 (控制 tools/skills/MCP 可用性)",
         "type": "string",
-        "hint": "选择 AstrBot 中已配置的人格作为 AI 人设。角色卡 + 此人格会合并注入 system_prompt",
+        "hint": "选择 AstrBot 中已配置的人格。system_prompt 由插件完全接管，此人格仅决定 tools/skills/MCP 是否可用",
         "default": "",
         "_special": "select_persona"
-    },
-    "override_astrbot_persona": {
-        "description": "完全接管 system_prompt",
-        "type": "bool",
-        "hint": "开启后插件完全替换 AstrBot 的 system_prompt；关闭则在原有人设前追加",
-        "default": true
     },
     "wrap_sections_with_labels": {
         "description": "为每个 section 添加标签头",

@@ -93,27 +93,15 @@ class SillyTavernPromptPlugin(Star):
     def _get_active_character(self, umo: str = "") -> Optional[CharacterCard]:
         return self._characters.get(umo)
 
-    # ── AstrBot 人格读取 ─────────────────────────────────
-
-    def _get_astrbot_persona_prompt(self) -> str:
-        """尝试从 AstrBot 读取选中人格的 system_prompt。"""
-        persona_name = self.config.get("astrbot_persona_name", "")
-        if not persona_name:
-            return ""
-        try:
-            # AstrBot 的 personas 客户端
-            persona = self.context.personas.get_persona(persona_name)
-            if persona and hasattr(persona, "system_prompt"):
-                return persona.system_prompt or ""
-        except Exception as e:
-            logger.debug(f"[ST-Prompt] 无法读取 AstrBot 人格 '{persona_name}': {e}")
-        return ""
-
     # ── LLM 钩子 ────────────────────────────────────────
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
-        """每次 LLM 调用前组装并注入 system_prompt。"""
+        """完全接管 system_prompt，用 ST 分层人设替换 AstrBot 原生内容。
+
+        tools/skills/MCP 由 AstrBot agent 框架独立管理，
+        不受 system_prompt 替换影响。
+        """
         umo = event.unified_msg_origin
         character = self._get_active_character(umo)
         preset = self._get_active_preset()
@@ -122,7 +110,7 @@ class SillyTavernPromptPlugin(Star):
             logger.warning("[ST-Prompt] 没有可用的预设，跳过 prompt 注入")
             return
 
-        # 组装
+        # 组装 ST 分层人设
         assembled = self.assembler.build_system_prompt(
             character=character,
             preset=preset,
@@ -133,21 +121,11 @@ class SillyTavernPromptPlugin(Star):
             enabled_sections=self._state.get("enabled_sections", {}),
         )
 
-        # 合并 AstrBot 人格
-        astrbot_persona_prompt = self._get_astrbot_persona_prompt()
-        if astrbot_persona_prompt:
-            assembled = f"{astrbot_persona_prompt}\n\n---\n\n{assembled}"
-
         if not assembled:
             return
 
-        # 接管 system_prompt
-        if self.config.get("override_astrbot_persona", True):
-            req.system_prompt = assembled
-        else:
-            # 在原有人设前追加
-            existing = req.system_prompt or ""
-            req.system_prompt = f"{assembled}\n\n---\n\n{existing}"
+        # 完全接管
+        req.system_prompt = assembled
 
     # ── 指令：角色卡管理 ─────────────────────────────────
 
@@ -433,58 +411,3 @@ class SillyTavernPromptPlugin(Star):
                 f"📋 **用户名管理**\n当前用户名: **{current}**\n\n"
                 "/st_user set <名字> — 设置用户名 (替换 {{user}} 宏)"
             )
-
-    # ── 指令：从 AstrBot 导入人格 ──────────────────────────
-
-    @filter.command("st_import_persona")
-    async def cmd_st_import_persona(self, event: AstrMessageEvent):
-        """从 AstrBot 人格列表导入: /st_import_persona <人名|list>"""
-        args = event.message_str.replace("/st_import_persona", "").strip().split(maxsplit=1)
-        sub = args[0].lower() if args else ""
-
-        if sub == "list":
-            yield event.plain_result(await self._import_persona_list())
-        elif sub:
-            yield event.plain_result(await self._import_persona_set(sub))
-        else:
-            yield event.plain_result(
-                "📋 **从 AstrBot 导入人格**\n"
-                "/st_import_persona list — 列出 AstrBot 所有可用人格\n"
-                "/st_import_persona <名称> — 使用指定人格作为 AI 人设\n\n"
-                "💡 也可以在 WebUI 配置中选择"
-            )
-
-    async def _import_persona_list(self) -> str:
-        try:
-            personas = self.context.personas.list_personas()
-            if not personas:
-                return "AstrBot 中没有配置人格。请在 AstrBot WebUI 的「人格与情景」中添加"
-            current = self.config.get("astrbot_persona_name", "")
-            lines = ["📁 **AstrBot 可用人格**"]
-            for p in personas:
-                name = p.name if hasattr(p, "name") else str(p)
-                marker = " ✅" if name == current else ""
-                lines.append(f"  - {name}{marker}")
-            return "\n".join(lines)
-        except Exception as e:
-            logger.warning(f"[ST-Prompt] 无法列出 AstrBot 人格: {e}")
-            return f"无法读取 AstrBot 人格列表: {e}\n\n请在 AstrBot WebUI 的「人格与情景」中配置"
-
-    async def _import_persona_set(self, name: str) -> str:
-        try:
-            persona = self.context.personas.get_persona(name)
-            if not persona:
-                return f"未找到人格: {name}\n使用 /st_import_persona list 查看可用人格"
-            prompt = persona.system_prompt if hasattr(persona, "system_prompt") else ""
-            if not prompt:
-                return f"人格 **{name}** 没有 system_prompt 内容"
-            self.config["astrbot_persona_name"] = name
-            self.config.save_config()
-            return (
-                f"✅ 已导入 AstrBot 人格: **{name}**\n"
-                f"system_prompt: {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n"
-                f"此内容将作为 AI 人设注入到 prompt 最前面"
-            )
-        except Exception as e:
-            logger.warning(f"[ST-Prompt] 导入 AstrBot 人格失败: {e}")
-            return f"导入失败: {e}"
