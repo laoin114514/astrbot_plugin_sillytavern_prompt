@@ -10,7 +10,7 @@ const btnNew = document.getElementById("btn-new-card");
 const btnCancel = document.getElementById("btn-cancel");
 
 let cards = [];
-let activeCard = null;
+let activeName = null;
 let editingName = null;
 let availableSkills = [];
 let availableTools = [];
@@ -18,26 +18,23 @@ let availableTools = [];
 // ── API ───────────────────────────────────────────────
 
 async function apiGet(path) {
-  const res = await bridge.apiGet(path);
-  return res;
+  return await bridge.apiGet(path);
 }
-
 async function apiPost(path, data) {
-  const res = await bridge.apiPost(path, data);
-  return res;
+  return await bridge.apiPost(path, data);
 }
 
 // ── Skills / Tools 复选框 ─────────────────────────────
 
 function renderCheckList(containerId, items, selected, mode) {
   const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = "";
   items.forEach(item => {
     const label = document.createElement("label");
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.value = item.name;
-    cb.dataset.name = item.name;
     if (Array.isArray(selected) && selected.includes(item.name)) cb.checked = true;
     label.appendChild(cb);
     label.appendChild(document.createTextNode(item.name));
@@ -49,6 +46,7 @@ function renderCheckList(containerId, items, selected, mode) {
 
 function setCheckListMode(containerId, mode) {
   const container = document.getElementById(containerId);
+  if (!container) return;
   if (mode === "custom") {
     container.classList.remove("disabled");
   } else {
@@ -58,6 +56,7 @@ function setCheckListMode(containerId, mode) {
 
 function getCheckedValues(containerId) {
   const container = document.getElementById(containerId);
+  if (!container) return [];
   return [...container.querySelectorAll("input:checked")].map(cb => cb.value);
 }
 
@@ -68,9 +67,19 @@ function parseListValue(raw) {
   return { mode: "all", values: [] };
 }
 
+function setupModeRadios(prefix) {
+  document.querySelectorAll(`input[name="${prefix}_mode"]`).forEach(r => {
+    r.addEventListener("change", () => {
+      setCheckListMode(`${prefix}-list`, document.querySelector(`input[name="${prefix}_mode"]:checked`)?.value);
+    });
+  });
+}
+
 // ── 列表 ──────────────────────────────────────────────
 
 async function loadCards() {
+  const sel = await apiGet("cards/select");
+  activeName = sel?.name || null;
   cards = await apiGet("cards") || [];
   renderList();
 }
@@ -79,15 +88,16 @@ function renderList() {
   cardList.innerHTML = "";
   cards.forEach(c => {
     const li = document.createElement("li");
-    if (c.name === activeCard) li.classList.add("active");
+    if (c.name === activeName) li.classList.add("active");
 
-    const s = c.skills === null ? "all" : (c.skills.length || "none");
-    const t = c.tools === null ? "all" : (c.tools.length || "none");
+    const s = c.skills === null ? "all" : (c.skills?.length || "none");
+    const t = c.tools === null ? "all" : (c.tools?.length || "none");
 
     li.innerHTML = `<span class="name">${esc(c.name)}</span>
       <span class="badges">
         <span class="badge">S:${s}</span>
         <span class="badge">T:${t}</span>
+        ${c.name === activeName ? '<span class="badge" style="background:#2d6a4f">当前</span>' : ''}
       </span>`;
     li.addEventListener("click", () => selectCard(c.name));
     cardList.appendChild(li);
@@ -96,18 +106,19 @@ function renderList() {
 
 // ── 详情 ──────────────────────────────────────────────
 
-async function selectCard(name) {
-  activeCard = name;
-  const card = await apiGet(`cards/${encodeURIComponent(name)}`);
-  if (!card) return;
-
-  renderList();
+function renderDetail(card) {
   editor.innerHTML = `
     <div class="card-detail">
-      <h3>${esc(card.name)}</h3>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <h3 style="margin:0">${esc(card.name)}</h3>
+        ${card.name === activeName
+          ? '<span class="badge" style="background:#2d6a4f;font-size:12px;padding:4px 10px">当前使用中</span>'
+          : `<button class="primary small" id="btn-select">设为当前角色</button>`
+        }
+      </div>
       ${field("prompt", card.prompt)}
-      ${field("skills", JSON.stringify(card.skills), "json")}
-      ${field("tools", JSON.stringify(card.tools), "json")}
+      ${field("skills", card.skills === null ? "全部" : (card.skills?.length ? JSON.stringify(card.skills) : "无"), "json")}
+      ${field("tools", card.tools === null ? "全部" : (card.tools?.length ? JSON.stringify(card.tools) : "无"), "json")}
       ${card.description ? field("description", card.description) : ""}
       ${card.personality ? field("personality", card.personality) : ""}
       ${card.scenario ? field("scenario", card.scenario) : ""}
@@ -116,18 +127,35 @@ async function selectCard(name) {
       ${card.user_name ? field("user_name", card.user_name) : ""}
       ${card.persona_description ? field("persona_description", card.persona_description) : ""}
       <div class="actions">
-        <button class="primary" id="btn-edit">编辑</button>
-        <button class="danger" id="btn-delete">删除</button>
+        <button class="primary" id="btn-edit-detail">编辑</button>
+        <button class="danger" id="btn-delete-detail">删除</button>
       </div>
     </div>
   `;
 
-  document.getElementById("btn-edit").addEventListener("click", () => openDialog(card));
-  document.getElementById("btn-delete").addEventListener("click", () => deleteCard(card.name));
+  const btnSelect = document.getElementById("btn-select");
+  if (btnSelect) {
+    btnSelect.addEventListener("click", async () => {
+      await apiPost("cards/select", { name: card.name });
+      activeName = card.name;
+      renderList();
+      renderDetail(card);
+    });
+  }
+
+  document.getElementById("btn-edit-detail").addEventListener("click", () => openDialog(card));
+  document.getElementById("btn-delete-detail").addEventListener("click", () => deleteCard(card.name));
+}
+
+async function selectCard(name) {
+  const card = await apiGet(`cards/${encodeURIComponent(name)}`);
+  if (!card || card.error) return;
+  renderList();
+  renderDetail(card);
 }
 
 function field(label, value, cls = "") {
-  return `<div class="field"><label>${label}</label><div class="value ${cls}">${esc(value)}</div></div>`;
+  return `<div class="field"><label>${label}</label><div class="value ${cls}">${esc(String(value))}</div></div>`;
 }
 
 // ── 新建 / 编辑弹窗 ───────────────────────────────────
@@ -141,14 +169,10 @@ btnNew.addEventListener("click", () => {
   setCheckListMode("skills-list", "all");
   renderCheckList("tools-list", availableTools, [], "all");
   setCheckListMode("tools-list", "all");
-  cardForm.querySelectorAll('input[name="skills_mode"]').forEach(r => {
-    r.checked = r.value === "all";
-    r.addEventListener("change", () => setCheckListMode("skills-list", cardForm.skills_mode.value));
-  });
-  cardForm.querySelectorAll('input[name="tools_mode"]').forEach(r => {
-    r.checked = r.value === "all";
-    r.addEventListener("change", () => setCheckListMode("tools-list", cardForm.tools_mode.value));
-  });
+  setupModeRadios("skills");
+  setupModeRadios("tools");
+  document.querySelector('input[name="skills_mode"][value="all"]').checked = true;
+  document.querySelector('input[name="tools_mode"][value="all"]').checked = true;
   dialog.showModal();
 });
 
@@ -160,20 +184,19 @@ function openDialog(card) {
   cardForm.prompt.value = card.prompt || "";
 
   const skillsParsed = parseListValue(card.skills);
-  cardForm.skills_mode.value = skillsParsed.mode;
   renderCheckList("skills-list", availableSkills, skillsParsed.values, skillsParsed.mode);
-  cardForm.querySelectorAll('input[name="skills_mode"]').forEach(r => {
+  document.querySelectorAll('input[name="skills_mode"]').forEach(r => {
     r.checked = r.value === skillsParsed.mode;
-    r.addEventListener("change", () => setCheckListMode("skills-list", cardForm.skills_mode.value));
   });
 
   const toolsParsed = parseListValue(card.tools);
-  cardForm.tools_mode.value = toolsParsed.mode;
   renderCheckList("tools-list", availableTools, toolsParsed.values, toolsParsed.mode);
-  cardForm.querySelectorAll('input[name="tools_mode"]').forEach(r => {
+  document.querySelectorAll('input[name="tools_mode"]').forEach(r => {
     r.checked = r.value === toolsParsed.mode;
-    r.addEventListener("change", () => setCheckListMode("tools-list", cardForm.tools_mode.value));
   });
+
+  setupModeRadios("skills");
+  setupModeRadios("tools");
 
   cardForm.description.value = card.description || "";
   cardForm.personality.value = card.personality || "";
@@ -219,20 +242,21 @@ cardForm.addEventListener("submit", async (e) => {
   }
 
   dialog.close();
-  if (!activeCard || activeCard === editingName || activeCard === data.name) {
-    activeCard = data.name;
-  }
   await loadCards();
-  await selectCard(data.name);
+  selectCard(data.name);
 });
 
 // ── 删除 ──────────────────────────────────────────────
 
 async function deleteCard(name) {
   if (!confirm(`确定删除角色卡「${name}」？`)) return;
-  await apiPost("cards/delete", { name });
-  if (activeCard === name) {
-    activeCard = null;
+  const resp = await apiPost("cards/delete", { name });
+  if (resp?.ok === false) {
+    alert("删除失败");
+    return;
+  }
+  if (activeName === name) {
+    activeName = null;
     editor.innerHTML = '<div class="empty-state">选择一张角色卡或新建一张</div>';
   }
   await loadCards();
@@ -254,6 +278,6 @@ const [s, t] = await Promise.all([
   apiGet("available-skills"),
   apiGet("available-tools"),
 ]);
-availableSkills = s || [];
-availableTools = t || [];
+availableSkills = Array.isArray(s) ? s : [];
+availableTools = Array.isArray(t) ? t : [];
 await loadCards();
