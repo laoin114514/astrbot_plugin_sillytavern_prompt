@@ -1,0 +1,38 @@
+{
+    "default_user_name": {
+        "description": "默认用户名 (替换 {{user}} 宏)",
+        "type": "string",
+        "hint": "在角色扮演中，你的称呼",
+        "default": "User"
+    },
+    "default_persona": {
+        "description": "默认用户 Persona 描述 (替换 {{persona}} 宏)",
+        "type": "text",
+        "hint": "描述你自己的身份、性格、背景等",
+        "default": ""
+    },
+    "default_preset": {
+        "description": "默认 Prompt 预设",
+        "type": "string",
+        "hint": "插件启动时自动加载的预设名称，留空使用内置 default",
+        "default": "default"
+    },
+    "override_astrbot_persona": {
+        "description": "完全接管 system_prompt",
+        "type": "bool",
+        "hint": "开启后插件完全替换 AstrBot 的 system_prompt；关闭则在原有人设前追加",
+        "default": true
+    },
+    "wrap_sections_with_labels": {
+        "description": "为每个 section 添加标签头",
+        "type": "bool",
+        "hint": "开启后在每段提示词前添加 [标题] 标签，帮助 LLM 理解结构",
+        "default": true
+    },
+    "include_dialogue_examples": {
+        "description": "包含对话示例",
+        "type": "bool",
+        "hint": "将角色卡的 mes_example 注入到 system_prompt 中",
+        "default": true
+    }
+}

@@ -1,0 +1,5 @@
+{
+    "name": "roleplay_simple",
+    "content": "Write {{char}}'s next reply in this roleplay chat. Use {{char}}'s mannerisms and speech style.",
+    "post_history": ""
+}
