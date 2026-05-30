@@ -214,12 +214,20 @@ class SillyTavernAntiOOC(Star):
         jailbreak = ST_JAILBREAK.format(char=char_name, user=user_name)
         reminder = ST_REMINDER.format(char=char_name, user=user_name)
 
-        req.system_prompt = (
-            f"{main}\n\n"
-            f"[Character Identity & Capabilities]\n{native}\n\n"
-            f"{enhance}"
-            f"{fmt}"
-        )
+        # JSON 开启时: 格式指令作为主框架，角色信息填充其中
+        # JSON 关闭时: 传统 ST 防 OOC 分层
+        if self._json_enabled:
+            req.system_prompt = (
+                f"{fmt}\n\n"
+                f"[Your Character: {char_name}]\n{native}\n\n"
+                f"{enhance}"
+            )
+        else:
+            req.system_prompt = (
+                f"{main}\n\n"
+                f"[Character Identity & Capabilities]\n{native}\n\n"
+                f"{enhance}"
+            )
 
         if self._debug:
             logger.warning(
