@@ -13,6 +13,8 @@ const btnCancel = document.getElementById("btn-cancel");
 let cards = [];
 let activeCard = null;
 let editingName = null;
+let availableSkills = [];
+let availableTools = [];
 
 // ── API ───────────────────────────────────────────────
 
@@ -24,6 +26,47 @@ async function apiGet(path) {
 async function apiPost(path, data) {
   const res = await bridge.apiPost(`${PLUGIN}/${path}`, data);
   return res;
+}
+
+// ── Skills / Tools 复选框 ─────────────────────────────
+
+function renderCheckList(containerId, items, selected, mode) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  items.forEach(item => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = item.name;
+    cb.dataset.name = item.name;
+    if (Array.isArray(selected) && selected.includes(item.name)) cb.checked = true;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(item.name));
+    if (item.description) label.title = item.description;
+    container.appendChild(label);
+  });
+  setCheckListMode(containerId, mode);
+}
+
+function setCheckListMode(containerId, mode) {
+  const container = document.getElementById(containerId);
+  if (mode === "custom") {
+    container.classList.remove("disabled");
+  } else {
+    container.classList.add("disabled");
+  }
+}
+
+function getCheckedValues(containerId) {
+  const container = document.getElementById(containerId);
+  return [...container.querySelectorAll("input:checked")].map(cb => cb.value);
+}
+
+function parseListValue(raw) {
+  if (raw === null || raw === undefined) return { mode: "all", values: [] };
+  if (Array.isArray(raw) && raw.length === 0) return { mode: "none", values: [] };
+  if (Array.isArray(raw)) return { mode: "custom", values: raw };
+  return { mode: "all", values: [] };
 }
 
 // ── 列表 ──────────────────────────────────────────────
@@ -95,6 +138,18 @@ btnNew.addEventListener("click", () => {
   dialogTitle.textContent = "新建角色卡";
   cardForm.reset();
   cardForm.name.removeAttribute("readonly");
+  renderCheckList("skills-list", availableSkills, [], "all");
+  setCheckListMode("skills-list", "all");
+  renderCheckList("tools-list", availableTools, [], "all");
+  setCheckListMode("tools-list", "all");
+  cardForm.querySelectorAll('input[name="skills_mode"]').forEach(r => {
+    r.checked = r.value === "all";
+    r.addEventListener("change", () => setCheckListMode("skills-list", cardForm.skills_mode.value));
+  });
+  cardForm.querySelectorAll('input[name="tools_mode"]').forEach(r => {
+    r.checked = r.value === "all";
+    r.addEventListener("change", () => setCheckListMode("tools-list", cardForm.tools_mode.value));
+  });
   dialog.showModal();
 });
 
@@ -104,8 +159,23 @@ function openDialog(card) {
   cardForm.name.value = card.name || "";
   cardForm.name.setAttribute("readonly", "");
   cardForm.prompt.value = card.prompt || "";
-  cardForm.skills.value = card.skills === null ? "null" : JSON.stringify(card.skills);
-  cardForm.tools.value = card.tools === null ? "null" : JSON.stringify(card.tools);
+
+  const skillsParsed = parseListValue(card.skills);
+  cardForm.skills_mode.value = skillsParsed.mode;
+  renderCheckList("skills-list", availableSkills, skillsParsed.values, skillsParsed.mode);
+  cardForm.querySelectorAll('input[name="skills_mode"]').forEach(r => {
+    r.checked = r.value === skillsParsed.mode;
+    r.addEventListener("change", () => setCheckListMode("skills-list", cardForm.skills_mode.value));
+  });
+
+  const toolsParsed = parseListValue(card.tools);
+  cardForm.tools_mode.value = toolsParsed.mode;
+  renderCheckList("tools-list", availableTools, toolsParsed.values, toolsParsed.mode);
+  cardForm.querySelectorAll('input[name="tools_mode"]').forEach(r => {
+    r.checked = r.value === toolsParsed.mode;
+    r.addEventListener("change", () => setCheckListMode("tools-list", cardForm.tools_mode.value));
+  });
+
   cardForm.description.value = card.description || "";
   cardForm.personality.value = card.personality || "";
   cardForm.scenario.value = card.scenario || "";
@@ -122,16 +192,17 @@ cardForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(cardForm);
 
-  const parseList = (raw) => {
-    if (!raw || raw.trim() === "null" || raw.trim() === "") return null;
-    try { return JSON.parse(raw); } catch { return null; }
+  const modeToList = (mode, checkedValues) => {
+    if (mode === "all") return null;
+    if (mode === "none") return [];
+    return checkedValues;
   };
 
   const data = {
     name: fd.get("name").trim(),
     prompt: fd.get("prompt"),
-    skills: parseList(fd.get("skills")),
-    tools: parseList(fd.get("tools")),
+    skills: modeToList(fd.get("skills_mode"), getCheckedValues("skills-list")),
+    tools: modeToList(fd.get("tools_mode"), getCheckedValues("tools-list")),
     description: fd.get("description"),
     personality: fd.get("personality"),
     scenario: fd.get("scenario"),
@@ -180,4 +251,10 @@ function esc(s) {
 // ── 初始化 ────────────────────────────────────────────
 
 await bridge.ready();
+const [s, t] = await Promise.all([
+  apiGet("available-skills"),
+  apiGet("available-tools"),
+]);
+availableSkills = s || [];
+availableTools = t || [];
 await loadCards();

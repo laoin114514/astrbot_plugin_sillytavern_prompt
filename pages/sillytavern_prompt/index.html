@@ -36,12 +36,24 @@
       </label>
 
       <div class="row">
-        <label>Skills
-          <input name="skills" placeholder="null=全部, []=无, [&quot;memory&quot;]=指定" />
-        </label>
-        <label>Tools
-          <input name="tools" placeholder="null=全部, []=无, [&quot;web_search&quot;]=指定" />
-        </label>
+        <fieldset class="check-group">
+          <legend>
+            Skills
+            <label class="radio-inline"><input type="radio" name="skills_mode" value="all" checked /> 全部</label>
+            <label class="radio-inline"><input type="radio" name="skills_mode" value="none" /> 无</label>
+            <label class="radio-inline"><input type="radio" name="skills_mode" value="custom" /> 自定义</label>
+          </legend>
+          <div class="check-list" id="skills-list"></div>
+        </fieldset>
+        <fieldset class="check-group">
+          <legend>
+            Tools
+            <label class="radio-inline"><input type="radio" name="tools_mode" value="all" checked /> 全部</label>
+            <label class="radio-inline"><input type="radio" name="tools_mode" value="none" /> 无</label>
+            <label class="radio-inline"><input type="radio" name="tools_mode" value="custom" /> 自定义</label>
+          </legend>
+          <div class="check-list" id="tools-list"></div>
+        </fieldset>
       </div>
 
       <details>

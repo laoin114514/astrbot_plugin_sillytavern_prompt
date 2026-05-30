@@ -56,6 +56,8 @@ class SillyTavernPromptPlugin(Star):
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards/<name>", self._api_get_card, ["GET"], "获取单张角色卡")
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards/save", self._api_save_card, ["POST"], "保存角色卡")
         ctx.register_web_api(f"/{PLUGIN_NAME}/cards/delete", self._api_delete_card, ["POST"], "删除角色卡")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/available-skills", self._api_available_skills, ["GET"], "获取可用 skills 列表")
+        ctx.register_web_api(f"/{PLUGIN_NAME}/available-tools", self._api_available_tools, ["GET"], "获取可用 tools 列表")
 
         logger.info(
             f"[ST-Prompt] 角色卡系统已加载，{len(self.store.list_all())} 张角色卡可用"
@@ -102,6 +104,34 @@ class SillyTavernPromptPlugin(Star):
         self.store.delete(name)
         await self.store.delete_from_astrbot(name, self.context.persona_manager)
         return jsonify({"ok": True})
+
+    async def _api_available_skills(self):
+        """GET /available-skills → [{name, description}, ...]"""
+        try:
+            from astrbot.core.skills.skill_manager import SkillManager
+            sm = SkillManager()
+            skills = sm.list_skills(active_only=False)
+            result = [{"name": s.name, "description": s.description or ""} for s in skills]
+            return jsonify(result)
+        except Exception as e:
+            logger.warning(f"[ST-Prompt] 获取 skills 列表失败: {e}")
+            return jsonify([])
+
+    async def _api_available_tools(self):
+        """GET /available-tools → [{name, description}, ...]"""
+        try:
+            tm = self.context.get_llm_tool_manager()
+            result = []
+            for f in tm.func_list:
+                if f.active:
+                    result.append({"name": f.name, "description": getattr(f, "description", "") or ""})
+            for f in tm.builtin_func_list.values():
+                if f.active:
+                    result.append({"name": f.name, "description": getattr(f, "description", "") or ""})
+            return jsonify(result)
+        except Exception as e:
+            logger.warning(f"[ST-Prompt] 获取 tools 列表失败: {e}")
+            return jsonify([])
 
     # ── 辅助 ────────────────────────────────────────────
 
