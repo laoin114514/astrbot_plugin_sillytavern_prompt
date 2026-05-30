@@ -81,8 +81,12 @@ class SillyTavernPromptPlugin(Star):
         ctx.register_web_api(f"/{PLUGIN_NAME}/available-skills", self._api_available_skills, ["GET"], "获取可用 skills")
         ctx.register_web_api(f"/{PLUGIN_NAME}/available-tools", self._api_available_tools, ["GET"], "获取可用 tools")
 
+        # 确保默认角色卡始终存在
+        self.store._ensure_default()
+
         logger.info(
             f"[ST-Prompt] 已加载 {len(self.store.list_all())} 张角色卡, 当前选中: {self._active_name}"
+            f", 存储目录: {self.cards_dir}"
         )
 
     # ── 角色卡引用 ─────────────────────────────────────
@@ -107,6 +111,7 @@ class SillyTavernPromptPlugin(Star):
 
     async def _api_list_cards(self):
         cards = self.store.list_all()
+        logger.info(f"[ST-Prompt] API /cards → {len(cards)} 张角色卡: {[c.name for c in cards]}")
         return jsonify([{
             "name": c.name,
             "skills": c.skills,
