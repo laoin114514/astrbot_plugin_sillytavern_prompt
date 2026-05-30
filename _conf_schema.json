@@ -6,10 +6,10 @@
         "default": false
     },
     "enable_json_format": {
-        "description": "启用 JSON 响应格式控制",
+        "description": "启用 JSON 结构化输出",
         "type": "bool",
-        "hint": "开启后 AI 强制返回 JSON 格式。社交媒体场景使用，普通聊天建议关闭",
-        "default": false
+        "hint": "AI 返回 JSON 格式，插件自动提取 messages 数组逐条发送",
+        "default": true
     },
     "max_messages": {
         "description": "AI 最多返回消息条数",

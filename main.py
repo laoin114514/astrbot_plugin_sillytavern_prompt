@@ -1,19 +1,12 @@
 """SillyTavern Anti-OOC Prompt Wrapper for AstrBot.
 
-零配置插件。读取 AstrBot 当前会话选中的人格，用 SillyTavern 的
-分层防 OOC 结构重新包装 system_prompt，防止人设崩坏。
-
-移植自 SillyTavern 的防 OOC 机制:
-  Main          — 系统指令最前面，设定对话框架
-  Persona       — AstrBot 原生人格 prompt + skills + MCP (完整保留)
-  enhanceDefs   — 告诉 AI 可用训练知识补充人设，但以显式定义为准
-  Jailbreak     — 聊天历史末尾的独立系统消息，作为生成前最后锚定
-  Depth Inject  — 在对话中多个深度注入简版 jailbreak，长对话不丢人设
-  begin_dialogs — AstrBot 已注入到 contexts 前面，具有 few-shot 效果
-  JSON Format   — 社交媒体场景强制 JSON 输出，控制条数和长度，禁 markdown
+防 OOC (移植自 SillyTavern):
+  Main / Persona / enhanceDefs / Depth Inject / Jailbreak
+响应控制:
+  结构化 JSON 输出 → 插件提取 messages 数组 → 逐条发送
 
 Author: laoin
-Version: 0.5.0
+Version: 0.5.2
 """
 
 import json
@@ -25,16 +18,15 @@ from astrbot.api import logger, AstrBotConfig
 from astrbot.api.provider import ProviderRequest
 from astrbot.core.agent.message import TextPart
 
-
 PLUGIN_NAME = "sillytavern_prompt"
 
-# ── SillyTavern 防 OOC 常量 ────────────────────────────
+# ── 防 OOC 常量 ──────────────────────────────────────
 
 ST_MAIN = (
     "Write {char}'s next reply in a fictional chat between {char} and {user}. "
-    "Stay in character at all times. Write in a narrative style, describing actions, "
-    "expressions, and dialogue naturally. Never break the fourth wall or acknowledge "
-    "that you are an AI. Never speak for {user} or describe {user}'s actions."
+    "Stay in character at all times. Describe actions, expressions, and dialogue "
+    "naturally. Never break the fourth wall or acknowledge that you are an AI. "
+    "Never speak for {user} or describe {user}'s actions."
 )
 
 ST_ENHANCE = (
@@ -54,62 +46,52 @@ ST_REMINDER = (
 
 DEPTHS = [0, 3, 6]
 
-# ── JSON 响应格式常量 ──────────────────────────────────
+# ── JSON 格式指令 ────────────────────────────────────
 
-JSON_FORMAT_INSTRUCTION = (
+JSON_FMT = (
     "\n\n[Response Format]\n"
-    "Reply ONLY with a JSON object, no other text before or after.\n"
-    'Format: {{"messages":[{{"content":"text1"}},{{"content":"text2"}}]}}\n'
-    "- max {max_messages} messages, each ≤{max_chars} chars\n"
-    "- Plain text only: no **bold**, no `code`, no markdown, no formatting\n"
-    "- Use emoji or words for emotion, never markdown syntax\n"
-    "- Do NOT wrap the JSON in ``` fences"
+    "Reply in JSON: {{\"messages\":[{{\"content\":\"your reply\"}}]}}\n"
+    "- Multiple messages: {{\"messages\":[{{\"content\":\"first\"}},{{\"content\":\"second\"}}]}}\n"
+    "- Max {max_messages} messages, each ≤{max_chars} characters\n"
+    "- content must be plain text, no markdown formatting\n"
+    "- Just output the JSON object directly, no ``` fences"
 )
 
-JSON_FORMAT_CRITICAL = (
-    "\n\n[CRITICAL RESPONSE FORMAT - YOU FAILED THIS LAST TIME]\n"
-    "You MUST respond with ONLY valid JSON. NO other text.\n"
-    'MUST be exactly: {{"messages":[{{"content":"your reply"}}]}}\n'
-    "- max {max_messages} messages, each ≤{max_chars} chars\n"
-    "- NO markdown. NO ```json```. NO text before/after JSON.\n"
-    "- If you break format again, the response will be rejected."
-)
-
-JSON_FORMAT_FINAL = (
-    "\n\n[FINAL WARNING - YOU FAILED FORMAT TWICE]\n"
-    "LAST CHANCE: ONLY output the JSON. Nothing else. No explanations.\n"
-    'Example of what you MUST output: {{"messages":[{{"content":"hello"}}]}}\n'
-    "Previous bad response (DO NOT DO THIS):\n{snippet}"
-)
-
-# Markdown 清理正则
 MD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__|`(.+?)`|~~(.+?)~~|\*(.+?)\*|_(.+?)_")
 
 
-@register(PLUGIN_NAME, "laoin", "ST 防 OOC + JSON格式控制 + 多层深度注入", "v0.5.0")
+@register(PLUGIN_NAME, "laoin", "ST 防 OOC + JSON 结构化输出", "v0.5.2")
 class SillyTavernAntiOOC(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
         self.config = config or {}
         self._failures: dict[str, int] = {}
         self._last_bad: dict[str, str] = {}
-        dbg = "ON" if self._debug else "OFF"
-        jfmt = "ON" if self._json_enabled else "OFF"
-        logger.info("[ST-AntiOOC] v0.5.1 loaded (depth=%s debug=%s json=%s)", DEPTHS, dbg, jfmt)
+        logger.warning(
+            "[ST-AntiOOC] v0.5.2 loaded debug=%s json=%s depths=%s config_keys=%s",
+            self._debug, self._json_enabled, DEPTHS,
+            list(self.config.keys())[:10] if self.config else [],
+        )
 
-    # ── 配置助手 ────────────────────────────────────────
+    # ── 配置 ──────────────────────────────────────────
 
     @property
     def _debug(self) -> bool:
-        """调试模式 (是 Python True，不是字符串 'true')。"""
         return self.config.get("debug") is True
 
     @property
     def _json_enabled(self) -> bool:
-        """JSON 格式控制是否启用。"""
-        return self.config.get("enable_json_format") is True
+        v = self.config.get("enable_json_format")
+        # 默认开启 (key 不存在 / None / True / 非False字符串 → 开启)
+        if v is None:
+            return True
+        if v is False:
+            return False
+        if isinstance(v, str) and v.lower() in ("false", "0", "no", "off"):
+            return False
+        return True
 
-    # ── 人格解析 ────────────────────────────────────────
+    # ── 人格解析 ──────────────────────────────────────
 
     def _resolve_persona_name(self, req: ProviderRequest) -> str:
         mgr = self.context.persona_manager
@@ -129,7 +111,7 @@ class SillyTavernAntiOOC(Star):
             pass
         return "Assistant"
 
-    # ── 深度注入 ────────────────────────────────────────
+    # ── 深度注入 ──────────────────────────────────────
 
     @staticmethod
     def _is_safe_position(contexts: list, pos: int) -> bool:
@@ -156,50 +138,41 @@ class SillyTavernAntiOOC(Star):
             total_inserted += 1
         contexts.reverse()
 
-    # ── JSON 解析 ──────────────────────────────────────
+    # ── JSON 解析 ────────────────────────────────────
 
     @staticmethod
     def _strip_markdown(text: str) -> str:
-        """移除 markdown 格式标记。"""
         return MD_RE.sub(r"\1\2\3\4\5\6", text)
 
-    def _parse_response(self, text: str, max_msg: int, max_chars: int) -> list[str] | None:
-        """从 LLM 响应中提取 messages 数组。
-
-        Returns:
-            解析成功返回 content 字符串列表，失败返回 None
-        """
+    def _parse_json_response(self, text: str, max_msg: int, max_chars: int) -> list[str] | None:
+        """提取 JSON 中的 messages 数组。失败返回 None。"""
         if not text or not text.strip():
             return None
-
         text = text.strip()
 
-        # 1. 去掉 ```json ... ``` 包裹
+        # 去 ``` 包裹
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
 
-        # 2. 找到 JSON 边界 (第一个 { 到最后一个 })
+        # 找 JSON 边界
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or start > end:
             return None
-        text = text[start : end + 1]
+        text = text[start:end + 1]
 
-        # 3. 解析 JSON
         try:
             data = json.loads(text)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
             return None
 
         if not isinstance(data, dict) or "messages" not in data:
             return None
-
-        messages = data["messages"]
-        if not isinstance(messages, list) or len(messages) == 0:
+        messages = data.get("messages")
+        if not isinstance(messages, list) or not messages:
             return None
 
-        # 4. 提取并清理每条消息
         result = []
         for msg in messages[:max_msg]:
             if not isinstance(msg, dict):
@@ -208,13 +181,10 @@ class SillyTavernAntiOOC(Star):
             if not content:
                 continue
             content = self._strip_markdown(content)
-            if len(content) > max_chars:
-                content = content[:max_chars]
-            result.append(content)
+            result.append(content[:max_chars])
+        return result or None
 
-        return result if result else None
-
-    # ── LLM 请求钩子 ────────────────────────────────────
+    # ── on_llm_request ────────────────────────────────
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -226,51 +196,38 @@ class SillyTavernAntiOOC(Star):
         user_name = event.get_sender_name() or "User"
         sid = req.session_id or ""
 
-        # 配置
         max_msg = int(self.config.get("max_messages", 3))
         max_chars = int(self.config.get("max_chars_per_message", 200))
 
-        # JSON 格式指令 (仅在启用时注入)
+        # JSON 格式指令
+        fmt = ""
         if self._json_enabled:
             fail_count = self._failures.get(sid, 0)
-            if fail_count == 0:
-                fmt = JSON_FORMAT_INSTRUCTION.format(max_messages=max_msg, max_chars=max_chars)
-            elif fail_count == 1:
-                fmt = JSON_FORMAT_CRITICAL.format(max_messages=max_msg, max_chars=max_chars)
-            else:
-                snippet = self._last_bad.get(sid, "")[:300]
-                fmt = JSON_FORMAT_FINAL.format(max_messages=max_msg, max_chars=max_chars, snippet=snippet)
-        else:
-            fmt = ""
+            fmt = JSON_FMT.format(max_messages=max_msg, max_chars=max_chars)
+            if fail_count > 0:
+                fmt += f"\n(Previous response was invalid JSON. Please fix this time.)"
 
         main = ST_MAIN.format(char=char_name, user=user_name)
         enhance = ST_ENHANCE.format(char=char_name, user=user_name)
         jailbreak = ST_JAILBREAK.format(char=char_name, user=user_name)
         reminder = ST_REMINDER.format(char=char_name, user=user_name)
 
-        # system_prompt
         req.system_prompt = (
             f"{main}\n\n"
             f"[Character Identity & Capabilities]\n{native}\n\n"
             f"{enhance}"
             f"{fmt}"
         )
+
         if self._debug:
-            logger.info(
-                "[ST-AntiOOC] on_llm_request char=%s user=%s json=%s contexts=%d prompt_len=%d",
-                char_name, user_name, self._json_enabled,
+            logger.warning(
+                "[ST-AntiOOC] req#%d char=%s json=%s fail=%d contexts=%d prompt=%d",
+                self._request_count, char_name, self._json_enabled,
+                self._failures.get(sid, 0),
                 len(req.contexts or []), len(req.system_prompt),
             )
+            self._request_count += 1
 
-        # user 级别格式提醒 (仅在启用时注入)
-        if self._json_enabled:
-            if req.extra_user_content_parts is None:
-                req.extra_user_content_parts = []
-            req.extra_user_content_parts.append(
-                TextPart(text="[Remember: respond with ONLY the JSON object. No markdown, no other text.]")
-            )
-
-        # 深度注入
         if req.contexts is None:
             req.contexts = []
         mid_depths = [d for d in DEPTHS if d > 0]
@@ -278,15 +235,30 @@ class SillyTavernAntiOOC(Star):
             self._inject_at_depths(req.contexts, reminder, mid_depths)
         req.contexts.append({"role": "system", "content": jailbreak, "_no_save": True})
 
-    # ── 响应装饰钩子 ────────────────────────────────────
+    # ── on_llm_response ───────────────────────────────
+
+    @filter.on_llm_response()
+    async def on_llm_response(self, event: AstrMessageEvent, resp):
+        """捕获 LLM 原始响应用于调试。"""
+        if self._debug and resp:
+            content = getattr(resp, "content", "") or ""
+            role = getattr(resp, "role", "") or ""
+            logger.warning(
+                "[ST-AntiOOC] LLM响应#%d role=%s content(%d): %s",
+                self._response_count, role, len(content), str(content)[:500],
+            )
+            self._response_count += 1
+
+    # ── on_decorating_result ──────────────────────────
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
-        """解析 LLM 响应中的 JSON，提取 messages 数组（仅在 enable_json_format 时生效）。"""
+        """解析 AI JSON 响应，提取 messages 逐条发送。"""
         result = event.get_result()
         if not result:
             return
 
+        # 提取纯文本
         text = ""
         try:
             for comp in result.chain:
@@ -295,9 +267,11 @@ class SillyTavernAntiOOC(Star):
         except Exception:
             pass
 
-        # 调试模式：始终输出 AI 原始响应
         if self._debug and text.strip():
-            logger.info("[ST-AntiOOC] AI返回(%d chars): %s", len(text), text[:800])
+            logger.warning(
+                "[ST-AntiOOC] result#%d raw(%d): %s",
+                self._response_count - 1, len(text), text[:500],
+            )
 
         if not self._json_enabled:
             return
@@ -308,12 +282,18 @@ class SillyTavernAntiOOC(Star):
         max_msg = int(self.config.get("max_messages", 3))
         max_chars = int(self.config.get("max_chars_per_message", 200))
 
-        messages = self._parse_response(text.strip(), max_msg, max_chars)
+        messages = self._parse_json_response(text.strip(), max_msg, max_chars)
 
         if messages:
             self._failures[sid] = 0
-            event.set_result("\n".join(messages))
+            # 多条消息用空行分隔
+            event.set_result("\n\n".join(messages))
+            logger.info("[ST-AntiOOC] JSON 解析成功: %d 条消息", len(messages))
         else:
             self._failures[sid] = self._failures.get(sid, 0) + 1
-            self._last_bad[sid] = text.strip()[:1000]
-            logger.info("[ST-AntiOOC] JSON 解析失败 (会话=%s, 连续%d次)", sid, self._failures[sid])
+            self._last_bad[sid] = text.strip()[:500]
+            # 失败时不修改 result，保持 AI 原始输出
+            logger.warning(
+                "[ST-AntiOOC] JSON 解析失败#%d: %s",
+                self._failures[sid], text.strip()[:200],
+            )
