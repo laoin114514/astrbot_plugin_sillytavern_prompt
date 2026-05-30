@@ -6,9 +6,9 @@
 
 from typing import Optional
 
-from macro_engine import MacroEngine
-from card_parser import CharacterCard
-from preset_store import PromptPreset
+from .macro_engine import MacroEngine
+from .card_parser import CharacterCard
+from .preset_store import PromptPreset
 
 
 # SillyTavern 中 openai.js lines 1203-1279 的 prompt 组装顺序

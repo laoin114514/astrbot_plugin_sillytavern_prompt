@@ -17,10 +17,10 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.provider import ProviderRequest
 
-from card_parser import CharacterCard, CardParser
-from prompt_assembler import PromptAssembler, SECTION_ORDER
-from preset_store import PresetStore, PromptPreset
-from macro_engine import MacroEngine
+from .card_parser import CharacterCard, CardParser
+from .prompt_assembler import PromptAssembler, SECTION_ORDER
+from .preset_store import PresetStore, PromptPreset
+from .macro_engine import MacroEngine
 
 PLUGIN_NAME = "sillytavern_prompt"
 
